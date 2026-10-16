@@ -3,7 +3,7 @@
 # scanned; that commit is what Argo CD then syncs. Do not edit the tags by hand.
 backend:
   image:
-    tag: "aa1005c2af5290847a1362b92261ac41f63eddba"
+    tag: "5ebfc5f67172d012b0f0d5e7f86da48d291be543"
 frontend:
   image:
-    tag: "aa1005c2af5290847a1362b92261ac41f63eddba"
+    tag: "5ebfc5f67172d012b0f0d5e7f86da48d291be543"
