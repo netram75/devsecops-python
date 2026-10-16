@@ -1,0 +1,31 @@
+# argo/argo-cd chart values for the local kind cluster.
+global:
+  domain: argocd.gearloop.local
+configs:
+  params:
+    server.insecure: true          # TLS ends at the ingress (plain HTTP on kind)
+  cm:
+    timeout.reconciliation: 60s    # poll Git every minute instead of every 3
+    admin.enabled: true
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.gearloop.local
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+redis:
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 1

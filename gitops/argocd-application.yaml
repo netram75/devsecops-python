@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gearloop
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/netram75/devsecops-python.git
+    targetRevision: main
+    path: helm/gearloop
+    helm:
+      releaseName: gearloop
+      valueFiles:
+        - values-prod.yaml
+        - ../../gitops/values-gitops.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gearloop
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # k8s/namespace.yaml owns the PSA labels
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: gearloop-backend
+      jsonPointers:
+        - /spec/replicas        # the HPA owns this
