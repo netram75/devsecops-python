@@ -1,6 +1,6 @@
 # GearLoop: campus gear lending, shipped the DevSecOps way
 
-**Session 21 DevSecOps capstone** · Netram Faran (`netram75`) · enrollment 24BCS10329
+**Session 21 DevSecOps capstone** · Netram Faran ([@netram75](https://github.com/netram75)) · enrollment 24BCS10329
 
 GearLoop is the lending desk for a campus media lab, robotics lab and XR studio. Students
 reserve cameras, drones, audio kits, lab kits, laptops and VR headsets. Staff check items
