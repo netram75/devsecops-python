@@ -1,0 +1,18 @@
+# Copied to terraform/moto_override.tf by emulator/run.sh (git-ignores *_override.tf).
+# Terraform merges override files over providers.tf, so the real code is unchanged:
+# only the endpoints and the fake credentials differ.
+provider "aws" {
+  region                      = var.region
+  access_key                  = "moto"
+  secret_key                  = "moto"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+
+  endpoints {
+    ec2 = "http://127.0.0.1:5050"
+    eks = "http://127.0.0.1:5050"
+    iam = "http://127.0.0.1:5050"
+    sts = "http://127.0.0.1:5050"
+  }
+}

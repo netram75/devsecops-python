@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars (git-ignored) and adjust. No credentials here:
+# authenticate with AWS_PROFILE=... or environment variables.
+region      = "ap-south-1"
+project     = "gearloop"
+environment = "prod"
+
+vpc_cidr             = "10.42.0.0/16"
+public_subnet_cidrs  = ["10.42.0.0/20", "10.42.16.0/20"]
+private_subnet_cidrs = ["10.42.128.0/20", "10.42.144.0/20"]
+enable_nat_gateway   = true
+
+cluster_version   = "1.35"
+api_allowed_cidrs = ["203.0.113.10/32"] # your public IP: curl -s https://checkip.amazonaws.com
+
+node_instance_types = ["t3.medium"] # t3.small if a new account has a 2-vCPU quota
+node_desired_size   = 2
+node_min_size       = 1
+node_max_size       = 3
