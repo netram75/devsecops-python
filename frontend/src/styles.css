@@ -269,6 +269,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .form-row { grid-template-columns: 1fr; }
   .bars li { grid-template-columns: 110px 1fr 24px; }
   .strip-days { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .row { flex-wrap: wrap; row-gap: 8px; }
+  .row .row-main { flex: 1 1 calc(100% - 52px); }
+  .row .row-main strong, .row .row-main span { white-space: normal; }
+  .row > .badge { margin-left: 48px; }
+  .row > .btn { margin-left: auto; }
+  .rows-compact .row .row-main { flex: 1; }
   .search { max-width: none; }
 
   /* table rows become cards */
