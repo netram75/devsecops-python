@@ -1,0 +1,60 @@
+# prometheus-community/kube-prometheus-stack values for the local kind cluster.
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [prometheus.gearloop.local]
+    paths: ["/"]
+  prometheusSpec:
+    # Without these two, Prometheus only picks up ServiceMonitors/rules carrying
+    # this Helm release's label and silently ignores the GearLoop chart's.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 3d
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits: { memory: 1Gi }
+
+grafana:
+  admin:
+    existingSecret: grafana-admin  # created at install time, never in Git
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [grafana.gearloop.local]
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL          # dashboards ship with the app chart, in its namespace
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  defaultDashboardsTimezone: browser
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+
+# kind runs these on the control-plane bound to 127.0.0.1, so they can never be
+# scraped and would show as permanently DOWN and fire false alerts.
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+kubeEtcd: { enabled: false }
+
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 10m, memory: 24Mi }
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
