@@ -13,7 +13,7 @@ and Prometheus/Grafana observability.
 |---|---|
 | **Demo video** | [demo/GearLoop-demo.mp4](demo/GearLoop-demo.mp4) |
 | **Slides** | [demo/GearLoop-presentation.pptx](demo/GearLoop-presentation.pptx) · [PDF](demo/GearLoop-presentation.pdf) |
-| **Pipeline** | [GitHub Actions runs](https://github.com/netram75/devsecops-python/actions) |
+| **Pipeline** | [all runs](https://github.com/netram75/devsecops-python/actions) · first green run [38939336061](https://github.com/netram75/devsecops-python/actions/runs/38939336061) (11/11 jobs, 3 m 26 s) · push recorded in the video [38941356666](https://github.com/netram75/devsecops-python/actions/runs/38941356666) |
 | **Images** | [ghcr.io/netram75/gearloop-backend](https://github.com/netram75/devsecops-python/pkgs/container/gearloop-backend) · [gearloop-frontend](https://github.com/netram75/devsecops-python/pkgs/container/gearloop-frontend) |
 
 | Layer | What is used |
@@ -354,7 +354,7 @@ helm upgrade --install gearloop ./helm/gearloop -n gearloop-staging -f helm/gear
 **GitOps loop:** push → pipeline → promote commit → Argo CD sync (60 s reconciliation) →
 the UI sidebar shows the new build SHA and pod name (from `/api/info`).
 
-**HPA under load** ([`scripts/load-test.sh`](scripts/load-test.sh)) and **migration race in the cluster**
+**HPA under load** ([`scripts/load-test.sh`](scripts/load-test.sh): 2 → 4 → 6 pods within 30 s, back to 2 about 75 s after the load stopped) and **migration race in the cluster**
 ([`k8s/jobs/migration-race.yaml`](k8s/jobs/migration-race.yaml): 3 pods run `alembic upgrade head` on an empty DB at once):
 
 | HPA scaling | Migration race: one pod migrates, two wait on the lock |
