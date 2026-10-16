@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gearloop-labs
+  labels:
+    purpose: troubleshooting-labs
+    pod-security.kubernetes.io/enforce: restricted

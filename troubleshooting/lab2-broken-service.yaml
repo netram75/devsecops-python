@@ -1,0 +1,31 @@
+# Lab 2: the Service selector says "lab2-wbe". Pods are Ready, but the Service has
+# no endpoints, so every request through it fails.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab2-web
+  namespace: gearloop-labs
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: lab2-web }
+  template:
+    metadata:
+      labels: { app: lab2-web }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 101, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.31-alpine
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /, port: http } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab2-web
+  namespace: gearloop-labs
+spec:
+  selector: { app: lab2-wbe }
+  ports: [{ name: http, port: 80, targetPort: http }]

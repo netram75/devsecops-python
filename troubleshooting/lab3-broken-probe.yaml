@@ -1,0 +1,24 @@
+# Lab 3: the readiness probe checks port 80, but unprivileged nginx listens on 8080.
+# Symptom: pods Running but 0/1 Ready; the Service never sends them traffic.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab3-web
+  namespace: gearloop-labs
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: lab3-web }
+  template:
+    metadata:
+      labels: { app: lab3-web }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 101, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.31-alpine
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            periodSeconds: 3
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }

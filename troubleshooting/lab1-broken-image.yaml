@@ -1,0 +1,20 @@
+# Lab 1: the image tag has a typo (1.31-alpnie). Symptom: ImagePullBackOff.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab1-web
+  namespace: gearloop-labs
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: lab1-web }
+  template:
+    metadata:
+      labels: { app: lab1-web }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 101, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.31-alpnie
+          ports: [{ name: http, containerPort: 8080 }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }

@@ -1,0 +1,39 @@
+# Proves the Alembic advisory lock in a real cluster: three pods run
+# `alembic upgrade head` against an empty database at the same moment.
+# Expected logs: one pod prints "Running upgrade -> 0001 ... -> 0002", the other
+# two wait on the lock and then find nothing to do. Run with scripts/migration-race.sh.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migration-race
+  namespace: gearloop
+spec:
+  parallelism: 3
+  completions: 3
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: { app: migration-race }
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: BACKEND_IMAGE
+          command: ["sh", "-c", "python -m app.wait_for_db && alembic upgrade head && alembic current"]
+          envFrom:
+            - configMapRef: { name: gearloop-config }
+          env:
+            - name: DB_NAME
+              value: gearloop_race
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: gearloop-db, key: db-password } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
