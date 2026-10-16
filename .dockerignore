@@ -1,3 +1,5 @@
-.git
-.github
-README.md
+**/.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.env
