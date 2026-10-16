@@ -1,183 +1,309 @@
-name: TaskBoard Python CI/CD
+name: GearLoop CI/CD
 
 on:
   push:
-    branches: main
+    branches: [main]
+    # The promote job commits gitops/values-gitops.yaml back to main; ignoring it
+    # stops the pipeline from triggering itself in a loop.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "screenshots/**"
+      - "demo/**"
+      - "gitops/values-gitops.yaml"
   pull_request:
-    branches: main
+    branches: [main]
+  workflow_dispatch:
 
-# ========================================
-# STEP 1 — Test
-# ========================================
+permissions:
+  contents: read
+
+concurrency:
+  group: gearloop-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  TRIVY_IMAGE: aquasec/trivy:0.75.0
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1
+  # ghcr.io/aquasecurity/trivy-db rate-limits shared runners; try the mirror first.
+  TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+
 jobs:
-  test:
-    name: Test - Backend & Frontend
+  # ------------------------------------------------------------------ quality gates
+  backend-tests:
+    name: Backend tests (pytest)
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-
-      - name: Install backend dependencies
-        run: pip install -r requirements.txt
+    defaults:
+      run:
         working-directory: backend
-
-      - name: Run backend tests
-        run: pytest -q
-        working-directory: backend
-
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
-
-      - name: Build frontend
-        run: npm install && npm run build
-        working-directory: frontend
-
-  # ========================================
-  # STEP 2 — Build Docker Images
-  # ========================================
-  docker-build:
-    name: Docker Build
-    needs: test
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build backend image
-        run: |
-          docker build -t nensiravaliya28/taskboard-backend:${{ github.sha }} ./backend
-
-      - name: Build frontend image
-        run: |
-          docker build -t nensiravaliya28/taskboard-frontend:${{ github.sha }} ./frontend
-
-  # ========================================
-  # STEP 3 — Scan Docker Images with Trivy
-  # ========================================
-  image-scan:
-    name: Image Scan - Trivy
-    needs: docker-build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Rebuild backend image for scan
-        run: |
-          docker build -t nensiravaliya28/taskboard-backend:${{ github.sha }} ./backend
-
-      - name: Rebuild frontend image for scan
-        run: |
-          docker build -t nensiravaliya28/taskboard-frontend:${{ github.sha }} ./frontend
-
-      - name: Install Trivy
-        run: |
-          sudo apt-get install -y wget
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
-            | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
-          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
-            | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update && sudo apt-get install -y trivy
-
-      - name: Scan backend image
-        run: |
-          trivy image --severity HIGH,CRITICAL --ignore-unfixed \
-            nensiravaliya28/taskboard-backend:${{ github.sha }}
-
-      - name: Scan frontend image
-        run: |
-          trivy image --severity HIGH,CRITICAL --ignore-unfixed \
-            nensiravaliya28/taskboard-frontend:${{ github.sha }}
-
-  # ========================================
-  # STEP 4 — Push Images to Docker Hub
-  # ========================================
-  push:
-    name: Push Images to Docker Hub
-    needs: image-scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          username: nensiravaliya28
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: pytest (any failure stops the pipeline)
+        run: python -m pytest -v --cov=app --cov-report=term-missing --junitxml=pytest-report.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-report
+          path: backend/pytest-report.xml
 
-      - name: Build and tag backend image
+  migrations:
+    name: Migrations on real Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: gearloop
+          POSTGRES_USER: gearloop
+          POSTGRES_PASSWORD: ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gearloop -d gearloop"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://gearloop:ci-only@localhost:5432/gearloop
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: upgrade -> downgrade -> upgrade
         run: |
-          docker build \
-            -t nensiravaliya28/taskboard-backend:${{ github.sha }} \
-            -t nensiravaliya28/taskboard-backend:latest \
-            ./backend
-
-      - name: Build and tag frontend image
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          alembic current
+      - name: Three replicas migrate at once; the advisory lock lets exactly one run
         run: |
-          docker build \
-            -t nensiravaliya28/taskboard-frontend:${{ github.sha }} \
-            -t nensiravaliya28/taskboard-frontend:latest \
-            ./frontend
+          alembic downgrade base
+          for i in 1 2 3; do (alembic upgrade head > "race-$i.log" 2>&1; echo "exit $?" >> "race-$i.log") & done
+          wait
+          tail -n +1 race-*.log
+          runs=$(cat race-*.log | grep -c "Running upgrade  -> 0001")
+          echo "replicas that ran migration 0001: $runs"
+          test "$runs" -eq 1
+          ! grep -h "exit [1-9]" race-*.log
 
-      - name: Push backend image
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: npm audit (runtime dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+  security:
+    name: Secrets + SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # Gitleaks scans the whole history, not just this commit
+      - name: Gitleaks (full git history)
         run: |
-          docker push nensiravaliya28/taskboard-backend:${{ github.sha }}
-          docker push nensiravaliya28/taskboard-backend:latest
-
-      - name: Push frontend image
+          docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" git /repo \
+            --no-banner --redact --config /repo/security/.gitleaks.toml
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Bandit (Python SAST, medium+)
         run: |
-          docker push nensiravaliya28/taskboard-frontend:${{ github.sha }}
-          docker push nensiravaliya28/taskboard-frontend:latest
+          pip install bandit==1.9.4
+          bandit -c security/bandit.yaml -r backend/app -ll
 
-  # ========================================
-  # STEP 5 — Deploy to Kubernetes
-  #          (only runs on push to main)
-  # ========================================
+  helm-lint:
+    name: Helm lint + render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint and render every environment
+        run: |
+          set -euo pipefail
+          helm version --short
+          helm lint helm/gearloop --set backend.image.tag=ci --set frontend.image.tag=ci --set postgres.password=ci
+          for env in dev staging prod; do
+            helm template gearloop helm/gearloop -f "helm/gearloop/values-$env.yaml" \
+              --set backend.image.tag=ci --set frontend.image.tag=ci --set postgres.password=ci > "/tmp/$env.yaml"
+            echo "$env: $(grep -c '^kind:' /tmp/$env.yaml) objects"
+          done
+          helm template gearloop helm/gearloop -f helm/gearloop/values-prod.yaml -f gitops/values-gitops.yaml > /dev/null
+          if helm template x helm/gearloop --set postgres.password=ci > /dev/null 2>&1; then
+            echo "chart rendered without an image tag; the guard is broken"; exit 1
+          fi
+
+  # ------------------------------------------------------------------ build + scan
+  images:
+    name: Build + Trivy (${{ matrix.component }})
+    needs: [backend-tests, migrations, frontend-build, security, helm-lint]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/gearloop-${{ matrix.component }}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+      - name: docker build
+        run: |
+          docker build --pull \
+            --build-arg APP_VERSION="${GITHUB_SHA::7}" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            -t "$IMAGE" ./${{ matrix.component }}
+          docker image ls "$IMAGE"
+      - name: Trivy scan (fails on fixable HIGH/CRITICAL)
+        run: |
+          set -o pipefail
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD/security:/cfg:ro" \
+            -e TRIVY_DB_REPOSITORY \
+            "$TRIVY_IMAGE" image --config /cfg/trivy.yaml "$IMAGE" | tee trivy-${{ matrix.component }}.txt
+      - name: Trivy summary
+        if: always()
+        run: |
+          {
+            echo "### Trivy: gearloop-${{ matrix.component }}"
+            echo "Image \`$IMAGE\` scanned for HIGH/CRITICAL (fixable) CVEs and secrets."
+            echo '```'
+            cat trivy-${{ matrix.component }}.txt 2>/dev/null || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save the scanned image
+        run: docker save "$IMAGE" | gzip > image.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.component }}
+          path: |
+            image.tar.gz
+            trivy-${{ matrix.component }}.txt
+          retention-days: 3
+
+  push:
+    name: Push to GHCR (${{ matrix.component }})
+    needs: images
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-${{ matrix.component }}
+      - name: Load the exact image Trivy scanned (no rebuild)
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/gearloop-${{ matrix.component }}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+          docker load < image.tar.gz
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: docker push (tag = commit SHA, never latest)
+        run: |
+          docker push "$IMAGE"
+          echo "- \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # ------------------------------------------------------------------ deploy + promote
   deploy:
-    name: Deploy to Kubernetes
+    name: Deploy to ephemeral kind + smoke test
     needs: push
     runs-on: ubuntu-latest
-
-    # Skip this step on pull requests — only deploy real merges to main
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
+    permissions:
+      contents: read
+      packages: read
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1.10.0
-
-      - name: Create namespace
-        run: kubectl apply -f k8s/namespace.yaml
-
-      - name: Update deployment with new image tag
+      - uses: actions/checkout@v7
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: ci
+      - name: helm upgrade --install from GHCR
         run: |
-          sed -i "s|__IMAGE_TAG__|${{ github.sha }}|g" k8s/deployment.yaml
-
-      - name: Deploy to Kubernetes
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          kubectl apply -f k8s/namespace.yaml
+          kubectl -n gearloop-staging create secret docker-registry ghcr \
+            --docker-server=ghcr.io --docker-username="${{ github.actor }}" \
+            --docker-password="${{ secrets.GITHUB_TOKEN }}"
+          helm upgrade --install gearloop helm/gearloop -n gearloop-staging \
+            -f helm/gearloop/values-dev.yaml \
+            --set backend.replicas=2 --set frontend.replicas=2 \
+            --set backend.image.repository="ghcr.io/$owner/gearloop-backend" \
+            --set frontend.image.repository="ghcr.io/$owner/gearloop-frontend" \
+            --set backend.image.tag="$GITHUB_SHA" --set frontend.image.tag="$GITHUB_SHA" \
+            --set 'imagePullSecrets[0].name=ghcr' --set ingress.enabled=false \
+            --wait --timeout 5m
+          kubectl -n gearloop-staging get pods -o wide
+          helm list -n gearloop-staging
+      - name: Smoke test the release
         run: |
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          set -euo pipefail
+          kubectl -n gearloop-staging port-forward svc/gearloop-backend 8000:8000 > /dev/null 2>&1 &
+          for _ in $(seq 1 30); do curl -sf localhost:8000/ready > /dev/null && break; sleep 1; done
+          version=$(curl -sf localhost:8000/api/info | jq -r .version)
+          echo "running build: $version"; test "$version" = "${GITHUB_SHA::7}"
+          asset=$(curl -sf -X POST localhost:8000/api/assets -H 'Content-Type: application/json' \
+            -d '{"tag":"CI-001","name":"Smoke test camera","category":"camera"}' | jq .id)
+          today=$(curl -sf localhost:8000/api/info | jq -r .today)
+          due=$(date -d "$today + 2 days" +%F)
+          body="{\"asset_id\":$asset,\"borrower_name\":\"CI Bot\",\"borrower_roll\":\"24CI00001\",\"borrower_email\":\"ci@example.com\",\"start_date\":\"$today\",\"due_date\":\"$due\"}"
+          first=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/api/loans -H 'Content-Type: application/json' -d "$body")
+          second=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/api/loans -H 'Content-Type: application/json' -d "$body")
+          echo "first reservation: $first, overlapping reservation: $second"
+          test "$first" = 201 && test "$second" = 409
+          curl -sf localhost:8000/metrics | grep -E '^gearloop_loans\{status="reserved"\} 1.0'
 
-      - name: Wait for backend pod to be ready
+  promote:
+    name: Promote SHA to GitOps (Argo CD)
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Commit the new image tags for Argo CD
         run: |
-          kubectl wait --for=condition=ready pod \
-            -l app=taskboard-backend \
-            -n taskboard \
-            --timeout=120s
-
-      - name: Test backend API in CI (Curl)
-        run: |
-          kubectl port-forward service/taskboard-backend 8001:80 -n taskboard &
-          sleep 3
-
-          echo "🌐 Fetching health endpoint..."
-          curl -sf http://localhost:8001/health
-
-          echo -e "\n🌐 Fetching root API..."
-          curl -sf http://localhost:8001/
-
+          set -euo pipefail
+          sed -i -E "s/^(    tag: ).*/\1\"${GITHUB_SHA}\"/" gitops/values-gitops.yaml
+          git diff --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "gitops: promote ${GITHUB_SHA::7} to the gearloop namespace" || { echo "nothing to promote"; exit 0; }
+          for attempt in 1 2 3 4 5; do
+            git push origin HEAD:main && exit 0
+            echo "push rejected (attempt $attempt); rebasing on the latest main"
+            git pull --rebase origin main
+          done
+          exit 1
