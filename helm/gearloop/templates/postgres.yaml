@@ -82,10 +82,15 @@ spec:
         - name: tmp
           emptyDir: {}
   volumeClaimTemplates:
-    - metadata:
+    # apiVersion/kind/volumeMode spelled out: the API server adds them, and Argo CD
+    # would otherwise report the StatefulSet as permanently OutOfSync.
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
+        volumeMode: Filesystem
         {{- with .Values.postgres.storageClassName }}
         storageClassName: {{ . }}
         {{- end }}

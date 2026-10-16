@@ -35,3 +35,7 @@ spec:
       name: gearloop-backend
       jsonPointers:
         - /spec/replicas        # the HPA owns this
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[]?.status
