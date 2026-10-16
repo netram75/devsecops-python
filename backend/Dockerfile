@@ -1,22 +1,32 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim AS base
+
+# ---------- stage 1: install dependencies into a venv ----------
+FROM python:3.12-slim AS build
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+COPY requirements.txt .
+RUN pip install -r requirements.txt \
+ && pip uninstall -y pip
+
+# ---------- stage 2: runtime without any packaging tools ----------
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PATH=/opt/venv/bin:$PATH
 
-# Patch OS packages at build time so Trivy sees fixed versions where Debian has them.
+# pip is only needed to build. Its vendored urllib3, msgpack and setuptools
+# (pkg_resources) were the HIGH CVEs Trivy found in the first image, so the
+# runtime image does not ship pip at all.
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall -y pip setuptools wheel || true \
+ && rm -rf /usr/local/lib/python3.12/ensurepip /usr/local/bin/pip*
 
 WORKDIR /app
-
-# Dependencies first: this layer is reused until requirements.txt changes.
-COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
-
+COPY --from=build /opt/venv /opt/venv
 COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app

@@ -1,0 +1,14 @@
+title = "GearLoop gitleaks config"
+
+[extend]
+useDefault = true
+
+# Only documented local-development values are allowed; nothing real.
+[[allowlists]]
+description = "Local docker compose / kind demo database password"
+regexTarget = "line"
+regexes = ['''gearloop-local-dev''']
+
+[[allowlists]]
+description = "Course reference material and lock files"
+paths = ['''docs/COURSE-README\.md''', '''package-lock\.json''', '''\.terraform\.lock\.hcl''']

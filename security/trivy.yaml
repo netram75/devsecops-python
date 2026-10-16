@@ -1,0 +1,19 @@
+# Trivy gate used by CI and locally. Fails (exit 1) on HIGH or CRITICAL findings
+# that have a fix available; unfixed CVEs are reported but cannot be acted on.
+severity:
+  - HIGH
+  - CRITICAL
+exit-code: 1
+format: table
+timeout: 10m
+scan:
+  scanners:
+    - vuln
+    - secret
+vulnerability:
+  # Must sit under `vulnerability:`; at the top level Trivy silently ignores it.
+  ignore-unfixed: true
+pkg:
+  types:
+    - os
+    - library
