@@ -37,7 +37,10 @@ export default function Dashboard({ stats, loans, activity, info, onAction, go }
     <div className="view">
       <header className="view-head">
         <div>
-          <p className="eyebrow">{fmtDay(today, { weekday: "long", day: "numeric", month: "long" })}</p>
+          <p className="eyebrow">
+            {fmtDay(today, { weekday: "long", day: "numeric", month: "long" })}
+            <span className="eyebrow-note"> · updated {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+          </p>
           <h1>Lending desk</h1>
         </div>
         <button className="btn btn-primary" onClick={() => onAction({ type: "newLoan" })}>
