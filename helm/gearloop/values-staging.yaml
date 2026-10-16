@@ -1,0 +1,15 @@
+# Staging namespace, installed with `helm upgrade --install` (shows up in helm list).
+config:
+  environment: staging
+backend:
+  autoscaling:
+    enabled: false
+  replicas: 2
+frontend:
+  replicas: 2
+postgres:
+  existingSecret: gearloop-db
+ingress:
+  host: staging.gearloop.local
+monitoring:
+  enabled: true

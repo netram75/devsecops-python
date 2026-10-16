@@ -1,0 +1,10 @@
+apiVersion: v2
+name: gearloop
+description: GearLoop campus gear lending - FastAPI backend, React frontend and PostgreSQL
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords: [fastapi, react, postgres, devsecops]
+maintainers:
+  - name: netram75
+    url: https://github.com/netram75

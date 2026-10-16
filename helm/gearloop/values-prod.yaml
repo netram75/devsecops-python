@@ -1,0 +1,17 @@
+# Production shape: HPA 2-6 backend pods, PDBs, secret managed outside Git.
+config:
+  environment: production
+backend:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+frontend:
+  replicas: 2
+postgres:
+  existingSecret: gearloop-db
+  storage: 5Gi
+ingress:
+  host: gearloop.local
+monitoring:
+  enabled: true

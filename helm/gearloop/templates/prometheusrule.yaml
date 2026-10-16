@@ -1,0 +1,59 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.rules.enabled }}
+{{- $ns := .Release.Namespace -}}
+{{- $job := printf "%s-backend" (include "gearloop.fullname" .) -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "gearloop.fullname" . }}
+  labels:
+    {{- include "gearloop.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: gearloop.availability
+      rules:
+        - alert: GearLoopBackendDown
+          expr: sum(up{namespace="{{ $ns }}", job="{{ $job }}"}) == 0 or absent(up{namespace="{{ $ns }}", job="{{ $job }}"})
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "No GearLoop backend pod is being scraped in {{ $ns }}"
+        - alert: GearLoopHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="{{ $ns }}", job="{{ $job }}", status="5xx"}[5m]))
+              / clamp_min(sum(rate(http_requests_total{namespace="{{ $ns }}", job="{{ $job }}"}[5m])), 1e-9) > 0.05
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "More than 5% of GearLoop API requests fail with 5xx"
+        - alert: GearLoopSlowRequests
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="{{ $ns }}", job="{{ $job }}"}[5m]))) > 0.5
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "GearLoop p95 latency above 500 ms"
+        - alert: GearLoopDatabaseUnreachable
+          expr: max(gearloop_db_up{namespace="{{ $ns }}"}) == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "GearLoop pods cannot read the database"
+    - name: gearloop.business
+      rules:
+        - alert: GearLoopOverdueLoans
+          expr: max(gearloop_loans_overdue{namespace="{{ $ns }}"}) >= {{ .Values.monitoring.rules.overdueLoansThreshold }}
+          for: 5m
+          labels: { severity: warning, team: lending-desk }
+          annotations:
+            summary: "{{ "{{" }} $value {{ "}}" }} checked-out items are past their due date"
+            description: "Chase the borrowers listed under Loans > Overdue."
+        - alert: GearLoopNoGearAvailable
+          expr: max(gearloop_assets_available_now{namespace="{{ $ns }}"}) == 0
+          for: 15m
+          labels: { severity: warning, team: lending-desk }
+          annotations:
+            summary: "Every in-service item is out on loan"
+{{- end }}

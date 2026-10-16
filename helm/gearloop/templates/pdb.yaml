@@ -1,0 +1,17 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $tier := list "backend" "frontend" }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gearloop.fullname" $ }}-{{ $tier }}
+  labels:
+    {{- include "gearloop.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $tier }}
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "gearloop.selector" (dict "ctx" $ "tier" $tier) | nindent 6 }}
+{{- end }}
+{{- end }}

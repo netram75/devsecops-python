@@ -1,0 +1,9 @@
+GearLoop {{ .Values.backend.image.tag | trunc 7 }} is installed in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+Open http://{{ .Values.ingress.host }}/  (point the host at your ingress controller,
+or: curl -H 'Host: {{ .Values.ingress.host }}' http://127.0.0.1/api/info)
+{{- end }}
+
+  kubectl -n {{ .Release.Namespace }} get pods,svc,ingress
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gearloop.fullname" . }}-frontend 8080:80

@@ -1,0 +1,79 @@
+# Default values. Environment files (values-dev/staging/prod.yaml) override these.
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+config:
+  environment: dev
+  timezone: Asia/Kolkata
+  maxActiveLoans: 3
+  maxAdvanceDays: 30
+
+backend:
+  image:
+    repository: ghcr.io/netram75/gearloop-backend
+    tag: ""            # required: the commit SHA built by CI
+    pullPolicy: IfNotPresent
+  replicas: 2          # used only when autoscaling is off
+  runMigrations: true  # each replica runs alembic; the advisory lock serialises them
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 320Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 60
+    scaleDownStabilizationSeconds: 60
+
+frontend:
+  image:
+    repository: ghcr.io/netram75/gearloop-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 96Mi }
+
+postgres:
+  enabled: true
+  image: postgres:17-alpine
+  database: gearloop
+  user: gearloop
+  # Either set password (dev only) or point existingSecret at a Secret holding
+  # the key "db-password". Nothing real belongs in Git.
+  password: ""
+  existingSecret: ""
+  storage: 1Gi
+  storageClassName: ""
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+
+# Use an external database instead of the bundled StatefulSet.
+externalDatabase:
+  host: ""
+  port: 5432
+
+ingress:
+  enabled: true
+  className: nginx
+  host: gearloop.local
+  annotations: {}
+  tls: []
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+monitoring:
+  enabled: false       # needs the Prometheus Operator CRDs (kube-prometheus-stack)
+  interval: 15s
+  labels: {}
+  rules:
+    enabled: true
+    overdueLoansThreshold: 3
+  dashboard:
+    enabled: true

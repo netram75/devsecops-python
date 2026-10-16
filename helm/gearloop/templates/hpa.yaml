@@ -1,0 +1,33 @@
+{{- if .Values.backend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "gearloop.fullname" . }}-backend
+  labels:
+    {{- include "gearloop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "gearloop.fullname" . }}-backend
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - { type: Pods, value: 2, periodSeconds: 15 }
+    scaleDown:
+      # short window so a demo shows the scale-down too (default is 300 s)
+      stabilizationWindowSeconds: {{ .Values.backend.autoscaling.scaleDownStabilizationSeconds }}
+      policies:
+        - { type: Pods, value: 2, periodSeconds: 15 }
+{{- end }}

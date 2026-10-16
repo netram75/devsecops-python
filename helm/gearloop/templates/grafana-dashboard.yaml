@@ -1,0 +1,14 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gearloop.fullname" . }}-dashboard
+  labels:
+    {{- include "gearloop.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: GearLoop
+data:
+  gearloop-{{ .Release.Namespace }}.json: |-
+{{ .Files.Get "dashboards/gearloop.json" | replace "__NAMESPACE__" .Release.Namespace | replace "__UID__" (printf "gearloop-%s" .Release.Namespace | trunc 40) | indent 4 }}
+{{- end }}

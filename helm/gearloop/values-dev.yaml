@@ -1,0 +1,15 @@
+# Local kind cluster, installed by hand. Single backend pod is enough.
+config:
+  environment: dev
+backend:
+  autoscaling:
+    enabled: false
+  replicas: 1
+frontend:
+  replicas: 1
+postgres:
+  password: gearloop-local-dev
+ingress:
+  host: dev.gearloop.local
+podDisruptionBudget:
+  enabled: false
